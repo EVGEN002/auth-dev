@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /*
-  Dev-авторизация: получает токен и записывает его в .env как VITE_API_KEY.
+  Dev-авторизация: получает токен и записывает его в .env
+  (по умолчанию как VITE_API_KEY, имена задаются через DEV_TOKEN_KEY).
   Запуск: bun run auth (под Node .env подхватывается через process.loadEnvFile).
 
   Если текущий токен ещё живой, запрос не выполняется.
@@ -13,18 +14,24 @@
   Необязательные:
     DEV_TOKEN_PATH — путь к токену в ответе, через точку (по умолчанию "token")
     DEV_TOKEN_SKEW — за сколько секунд до истечения обновлять (по умолчанию 300)
+    DEV_TOKEN_KEY — в какие переменные .env писать токен, через запятую
+      (по умолчанию VITE_API_KEY), например VITE_API_KEY,BUN_PUBLIC_API_KEY
 */
 const fs = require("node:fs");
 const path = require("node:path");
 
 const ENV_PATH = path.join(process.cwd(), ".env");
-const ENV_KEY = "VITE_API_KEY";
 const FORCE = process.argv.includes("--force");
 
 // Bun грузит .env сам, Node — нет. Уже заданные переменные не перезаписываются.
 if (typeof process.loadEnvFile === "function" && fs.existsSync(ENV_PATH)) {
   process.loadEnvFile(ENV_PATH);
 }
+
+const ENV_KEYS = (process.env.DEV_TOKEN_KEY || "VITE_API_KEY")
+  .split(",")
+  .map((key) => key.trim())
+  .filter(Boolean);
 
 const log = (message) => console.log(`[auth] ${message}`);
 
@@ -74,8 +81,10 @@ const getSecondsLeft = (token) => {
 };
 
 const isStillValid = () => {
-  const token = getEnvValue(ENV_KEY);
-  if (!token) return false;
+  const tokens = ENV_KEYS.map(getEnvValue);
+  const [token] = tokens;
+  // Если добавили новое имя в DEV_TOKEN_KEY, его тоже нужно заполнить.
+  if (!token || tokens.some((value) => value !== token)) return false;
 
   const secondsLeft = getSecondsLeft(token);
   if (secondsLeft === null) return false;
@@ -101,6 +110,11 @@ const main = async () => {
 
   if (!DEV_ENDPOINT || !DEV_LOGIN || !DEV_PASSWORD) {
     fail("Задайте DEV_ENDPOINT, DEV_LOGIN и DEV_PASSWORD в .env");
+  }
+
+  const badKey = ENV_KEYS.find((key) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key));
+  if (!ENV_KEYS.length || badKey !== undefined) {
+    fail(`Некорректное имя переменной в DEV_TOKEN_KEY: "${badKey ?? ""}"`);
   }
 
   if (!FORCE && isStillValid()) return;
@@ -132,13 +146,14 @@ const main = async () => {
     fail(`В ответе нет поля ${process.env.DEV_TOKEN_PATH || "token"}`);
   }
 
-  writeEnv(ENV_KEY, token);
+  ENV_KEYS.forEach((key) => writeEnv(key, token));
 
+  const keys = ENV_KEYS.join(", ");
   const secondsLeft = getSecondsLeft(token);
   log(
     secondsLeft === null
-      ? `${ENV_KEY} записан в .env`
-      : `${ENV_KEY} записан в .env, истекает через ${Math.floor(secondsLeft / 60)} мин`,
+      ? `${keys} записан в .env`
+      : `${keys} записан в .env, истекает через ${Math.floor(secondsLeft / 60)} мин`,
   );
 };
 
