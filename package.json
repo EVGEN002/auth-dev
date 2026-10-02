@@ -1,5 +1,5 @@
 {
-  "name": "@EVGEN002/auth-dev",
+  "name": "@evgen002/auth-dev",
   "version": "1.0.0",
   "description": "Dev-авторизация: получает токен и записывает его в .env как VITE_API_KEY",
   "bin": {

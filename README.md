@@ -1,4 +1,4 @@
-# @OWNER/auth-dev
+# @evgen002/auth-dev
 
 Получает dev-токен и записывает его в `.env` проекта как `VITE_API_KEY`.
 Если текущий токен (JWT) ещё живой, запрос не выполняется.
@@ -8,16 +8,16 @@
 Пакет лежит в GitHub Packages, поэтому в проекте нужен `.npmrc`:
 
 ```
-@OWNER:registry=https://npm.pkg.github.com
+@evgen002:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
 `GITHUB_TOKEN` — personal access token (classic) со scope `read:packages`.
 
 ```sh
-bun add -d @OWNER/auth-dev
+bun add -d @evgen002/auth-dev
 # или
-npm i -D @OWNER/auth-dev
+npm i -D @evgen002/auth-dev
 ```
 
 ## Использование
