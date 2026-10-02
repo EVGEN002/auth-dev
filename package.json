@@ -1,0 +1,22 @@
+{
+  "name": "@EVGEN002/auth-dev",
+  "version": "1.0.0",
+  "description": "Dev-авторизация: получает токен и записывает его в .env как VITE_API_KEY",
+  "bin": {
+    "auth-dev": "index.cjs"
+  },
+  "files": [
+    "index.cjs"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EVGEN002/auth-dev.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "license": "MIT"
+}
