@@ -1,6 +1,6 @@
 {
   "name": "@evgen002/auth-dev",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Dev-авторизация: получает токен и записывает его в .env как VITE_API_KEY",
   "bin": {
     "auth-dev": "index.cjs"
