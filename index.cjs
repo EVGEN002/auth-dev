@@ -35,11 +35,42 @@ const ENV_KEYS = (process.env.DEV_TOKEN_KEY || "VITE_API_KEY")
   .map((key) => key.trim())
   .filter(Boolean);
 
-const log = (message) => console.log(`[auth] ${message}`);
+// Цвета только в терминале и без NO_COLOR, чтобы не мусорить в логах CI.
+const USE_COLOR =
+  process.stdout.isTTY && process.stderr.isTTY && !("NO_COLOR" in process.env);
+
+const paint = (code) => (text) =>
+  USE_COLOR ? `\x1b[${code}m${text}\x1b[0m` : String(text);
+
+const c = {
+  bold: paint("1"),
+  dim: paint("2"),
+  red: paint("31"),
+  green: paint("32"),
+  yellow: paint("33"),
+  cyan: paint("36"),
+};
+
+const PREFIX = c.cyan("[auth]");
+
+const log = (message) => console.log(`${PREFIX} ${message}`);
+const info = (message) => log(`${c.dim("•")} ${message}`);
+const success = (message) => log(`${c.green("✔")} ${message}`);
 
 const fail = (message) => {
-  console.error(`[auth] ${message}`);
+  console.error(`${PREFIX} ${c.red("✖")} ${message}`);
   process.exit(1);
+};
+
+const paintStatus = (status) =>
+  status >= 500 ? c.red : status >= 400 ? c.yellow : c.green;
+
+// Кусок ответа сервера при ошибке: обычно там объяснение причины.
+const formatBody = (text) => {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const short = trimmed.length > 500 ? `${trimmed.slice(0, 500)}…` : trimmed;
+  return `\n${c.dim(short)}`;
 };
 
 const readEnv = () =>
@@ -94,7 +125,9 @@ const isStillValid = () => {
   const skew = Number(process.env.DEV_TOKEN_SKEW) || 300;
   if (secondsLeft <= skew) return false;
 
-  log(`токен действителен ещё ${Math.floor(secondsLeft / 60)} мин, пропускаю`);
+  success(
+    `токен действителен ещё ${c.bold(`${Math.floor(secondsLeft / 60)} мин`)}, пропускаю ${c.dim("(--force — обновить)")}`,
+  );
   return true;
 };
 
@@ -142,6 +175,12 @@ const main = async () => {
 
   if (!FORCE && isStillValid()) return;
 
+  log(`${c.bold("POST")} ${authUrl}`);
+  info(`логин: ${DEV_LOGIN}${process.env.DEV_TWO_FACTOR_CODE ? ", с кодом 2FA" : ""}`);
+
+  const startedAt = Date.now();
+  const elapsed = () => c.dim(`${Date.now() - startedAt} мс`);
+
   let response;
   try {
     response = await fetch(authUrl, {
@@ -150,18 +189,27 @@ const main = async () => {
       body: JSON.stringify({ login: DEV_LOGIN, password: DEV_PASSWORD }),
     });
   } catch (error) {
-    fail(`Не удалось подключиться к ${authUrl}: ${error.message}`);
+    // fetch прячет причину в cause, а при нескольких адресах — в cause.errors.
+    const cause = error.cause?.errors?.[0] ?? error.cause ?? error;
+    fail(`Не удалось подключиться: ${cause.code || cause.message} · ${elapsed()}`);
   }
 
+  const status = paintStatus(response.status)(
+    `${response.status} ${response.statusText}`.trim(),
+  );
+  const text = await response.text().catch(() => "");
+
   if (!response.ok) {
-    fail(`Сервер ответил ${response.status} ${response.statusText}`);
+    fail(`${status} · ${elapsed()}${formatBody(text)}`);
   }
+
+  success(`${status} · ${elapsed()}`);
 
   let data;
   try {
-    data = await response.json();
+    data = JSON.parse(text);
   } catch {
-    fail("Ответ сервера — не JSON");
+    fail(`Ответ сервера — не JSON${formatBody(text)}`);
   }
 
   const token = pickToken(data);
@@ -171,12 +219,12 @@ const main = async () => {
 
   ENV_KEYS.forEach((key) => writeEnv(key, token));
 
-  const keys = ENV_KEYS.join(", ");
+  const keys = c.bold(ENV_KEYS.join(", "));
   const secondsLeft = getSecondsLeft(token);
-  log(
+  success(
     secondsLeft === null
       ? `${keys} записан в .env`
-      : `${keys} записан в .env, истекает через ${Math.floor(secondsLeft / 60)} мин`,
+      : `${keys} записан в .env, истекает через ${c.bold(`${Math.floor(secondsLeft / 60)} мин`)}`,
   );
 };
 
