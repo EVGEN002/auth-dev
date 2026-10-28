@@ -16,7 +16,7 @@
     "url": "git+https://github.com/EVGEN002/auth-dev.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "license": "MIT"
 }

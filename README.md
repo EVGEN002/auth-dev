@@ -1,25 +1,15 @@
 # @evgen002/auth-dev
 
+[![npm](https://img.shields.io/npm/v/@evgen002/auth-dev)](https://www.npmjs.com/package/@evgen002/auth-dev)
+
 Получает dev-токен и записывает его в `.env` проекта. Пока токен (JWT) действителен, повторный запрос не делается.
 
 ## Установка
 
-Один раз на компьютере войдите в GitHub Packages. Пароль — [токен (classic)](https://github.com/settings/tokens/new) с правом `read:packages`:
-
-```sh
-npm login --registry=https://npm.pkg.github.com --auth-type=legacy
-```
-
-В корне проекта создайте `.npmrc`:
-
-```
-@evgen002:registry=https://npm.pkg.github.com
-```
-
-Установите пакет (имя только строчными):
-
 ```sh
 bun add -d @evgen002/auth-dev
+# или
+npm i -D @evgen002/auth-dev
 ```
 
 ## Использование
@@ -37,6 +27,10 @@ DEV_PASSWORD=password
 ```sh
 bunx auth-dev           # получить токен
 bunx auth-dev --force   # обновить, даже если старый ещё действует
+
+# или через npm
+npx auth-dev
+npx auth-dev --force
 ```
 
 ## Переменные
@@ -49,6 +43,15 @@ bunx auth-dev --force   # обновить, даже если старый ещ�
 | `DEV_TOKEN_KEY`  | `VITE_API_KEY` | Куда записать токен, можно несколько через запятую |
 | `DEV_TOKEN_PATH` | `token`        | Путь к токену в ответе, например `data.accessToken` |
 | `DEV_TOKEN_SKEW` | `300`          | За сколько секунд до истечения обновлять токен  |
+| `DEV_TWO_FACTOR_ENDPOINT` | —     | URL авторизации с 2FA, используется вместо `DEV_ENDPOINT` |
+| `DEV_TWO_FACTOR_CODE` | —         | Код 2FA, передаётся как `?two_factor_code=<код>` |
+
+Если заданы `DEV_TWO_FACTOR_ENDPOINT` и `DEV_TWO_FACTOR_CODE`, запрос уходит на `DEV_TWO_FACTOR_ENDPOINT?two_factor_code=<код>` с тем же телом `{ login, password }`, а `DEV_ENDPOINT` можно не задавать:
+
+```
+DEV_TWO_FACTOR_ENDPOINT=https://example.com/api/users/v1/main/auth
+DEV_TWO_FACTOR_CODE=123456
+```
 
 Имя в `DEV_TOKEN_KEY` должно начинаться с префикса вашего сборщика: Vite — `VITE_`, Bun — `BUN_PUBLIC_`, Create React App — `REACT_APP_`, Next.js — `NEXT_PUBLIC_`. В webpack (`dotenv-webpack`) подойдёт любое имя.
 
@@ -57,7 +60,7 @@ bunx auth-dev --force   # обновить, даже если старый ещ�
 ```sh
 npm version minor        # или patch / major
 git push --follow-tags
-gh release create v1.1.0 --generate-notes
+gh release create "$(git describe --tags --abbrev=0)" --generate-notes
 ```
 
-GitHub Actions опубликует пакет после создания релиза.
+GitHub Actions опубликует пакет в npm после создания релиза. Токены не нужны — используется [Trusted Publishing](https://docs.npmjs.com/trusted-publishers): в настройках пакета на npmjs.com добавлен репозиторий `EVGEN002/auth-dev` и workflow `publish.yml`.
