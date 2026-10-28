@@ -16,8 +16,9 @@
     DEV_TOKEN_SKEW — за сколько секунд до истечения обновлять (по умолчанию 300)
     DEV_TOKEN_KEY — в какие переменные .env писать токен, через запятую
       (по умолчанию VITE_API_KEY), например VITE_API_KEY,BUN_PUBLIC_API_KEY
-    DEV_TWO_FACTOR_ENDPOINT, DEV_TWO_FACTOR_CODE — если заданы обе, запрос
-      уходит на DEV_TWO_FACTOR_ENDPOINT?two_factor_code=<код> вместо DEV_ENDPOINT
+    DEV_TWO_FACTOR_ENDPOINT, DEV_TWO_FACTOR_CODE — если заданы обе, после
+      входа на DEV_ENDPOINT уходит второй запрос на
+      DEV_TWO_FACTOR_ENDPOINT?two_factor_code=<код>, токен берётся из его ответа
 */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -140,15 +141,14 @@ const pickToken = (data) => {
   return typeof value === "string" ? value : "";
 };
 
-const getAuthUrl = () => {
-  const { DEV_ENDPOINT, DEV_TWO_FACTOR_ENDPOINT, DEV_TWO_FACTOR_CODE } =
-    process.env;
+const getTwoFactorUrl = () => {
+  const { DEV_TWO_FACTOR_ENDPOINT, DEV_TWO_FACTOR_CODE } = process.env;
 
   if (!DEV_TWO_FACTOR_ENDPOINT !== !DEV_TWO_FACTOR_CODE) {
     fail("Задайте DEV_TWO_FACTOR_ENDPOINT и DEV_TWO_FACTOR_CODE вместе");
   }
 
-  if (!DEV_TWO_FACTOR_ENDPOINT) return DEV_ENDPOINT;
+  if (!DEV_TWO_FACTOR_ENDPOINT) return "";
 
   let url;
   try {
@@ -160,32 +160,33 @@ const getAuthUrl = () => {
   return url.toString();
 };
 
-const main = async () => {
+// Cookie из ответа (например, сессия после первого шага) для следующего запроса.
+const toCookieHeader = (response) =>
+  response.headers
+    .getSetCookie()
+    .map((cookie) => cookie.split(";")[0])
+    .join("; ");
+
+/*
+  POST { login, password } с логом запроса, статуса и времени.
+  При ошибке сети или статусе не 2xx завершает процесс.
+*/
+const post = async (url, { step, cookie } = {}) => {
   const { DEV_LOGIN, DEV_PASSWORD } = process.env;
-  const authUrl = getAuthUrl();
 
-  if (!authUrl || !DEV_LOGIN || !DEV_PASSWORD) {
-    fail("Задайте DEV_ENDPOINT, DEV_LOGIN и DEV_PASSWORD в .env");
-  }
-
-  const badKey = ENV_KEYS.find((key) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key));
-  if (!ENV_KEYS.length || badKey !== undefined) {
-    fail(`Некорректное имя переменной в DEV_TOKEN_KEY: "${badKey ?? ""}"`);
-  }
-
-  if (!FORCE && isStillValid()) return;
-
-  log(`${c.bold("POST")} ${authUrl}`);
-  info(`логин: ${DEV_LOGIN}${process.env.DEV_TWO_FACTOR_CODE ? ", с кодом 2FA" : ""}`);
+  log(`${step ? `${c.dim(step)} ` : ""}${c.bold("POST")} ${url}`);
 
   const startedAt = Date.now();
   const elapsed = () => c.dim(`${Date.now() - startedAt} мс`);
 
   let response;
   try {
-    response = await fetch(authUrl, {
+    response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
       body: JSON.stringify({ login: DEV_LOGIN, password: DEV_PASSWORD }),
     });
   } catch (error) {
@@ -204,6 +205,37 @@ const main = async () => {
   }
 
   success(`${status} · ${elapsed()}`);
+  return { response, text };
+};
+
+const main = async () => {
+  const { DEV_ENDPOINT, DEV_LOGIN, DEV_PASSWORD } = process.env;
+  const twoFactorUrl = getTwoFactorUrl();
+
+  if (!DEV_ENDPOINT || !DEV_LOGIN || !DEV_PASSWORD) {
+    fail("Задайте DEV_ENDPOINT, DEV_LOGIN и DEV_PASSWORD в .env");
+  }
+
+  const badKey = ENV_KEYS.find((key) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key));
+  if (!ENV_KEYS.length || badKey !== undefined) {
+    fail(`Некорректное имя переменной в DEV_TOKEN_KEY: "${badKey ?? ""}"`);
+  }
+
+  if (!FORCE && isStillValid()) return;
+
+  info(`логин: ${DEV_LOGIN}`);
+
+  // С 2FA: сначала обычный вход, затем подтверждение кодом, токен — из второго ответа.
+  let { response, text } = await post(DEV_ENDPOINT, {
+    step: twoFactorUrl ? "1/2" : "",
+  });
+
+  if (twoFactorUrl) {
+    ({ text } = await post(twoFactorUrl, {
+      step: "2/2",
+      cookie: toCookieHeader(response),
+    }));
+  }
 
   let data;
   try {
@@ -214,7 +246,7 @@ const main = async () => {
 
   const token = pickToken(data);
   if (!token) {
-    fail(`В ответе нет поля ${process.env.DEV_TOKEN_PATH || "token"}`);
+    fail(`В ответе нет поля ${process.env.DEV_TOKEN_PATH || "token"}${formatBody(text)}`);
   }
 
   ENV_KEYS.forEach((key) => writeEnv(key, token));

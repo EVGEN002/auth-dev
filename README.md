@@ -43,10 +43,10 @@ npx auth-dev --force
 | `DEV_TOKEN_KEY`  | `VITE_API_KEY` | Куда записать токен, можно несколько через запятую |
 | `DEV_TOKEN_PATH` | `token`        | Путь к токену в ответе, например `data.accessToken` |
 | `DEV_TOKEN_SKEW` | `300`          | За сколько секунд до истечения обновлять токен  |
-| `DEV_TWO_FACTOR_ENDPOINT` | —     | URL авторизации с 2FA, используется вместо `DEV_ENDPOINT` |
+| `DEV_TWO_FACTOR_ENDPOINT` | —     | URL подтверждения 2FA, вызывается после `DEV_ENDPOINT` |
 | `DEV_TWO_FACTOR_CODE` | —         | Код 2FA, передаётся как `?two_factor_code=<код>` |
 
-Если заданы `DEV_TWO_FACTOR_ENDPOINT` и `DEV_TWO_FACTOR_CODE`, запрос уходит на `DEV_TWO_FACTOR_ENDPOINT?two_factor_code=<код>` с тем же телом `{ login, password }`, а `DEV_ENDPOINT` можно не задавать:
+Если заданы `DEV_TWO_FACTOR_ENDPOINT` и `DEV_TWO_FACTOR_CODE`, вход идёт в два шага: сначала `POST { login, password }` на `DEV_ENDPOINT`, затем с тем же телом на `DEV_TWO_FACTOR_ENDPOINT?two_factor_code=<код>`. Cookie из первого ответа передаются во второй запрос, токен берётся из второго ответа:
 
 ```
 DEV_TWO_FACTOR_ENDPOINT=https://example.com/api/users/v1/main/auth
