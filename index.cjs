@@ -16,6 +16,8 @@
     DEV_TOKEN_SKEW — за сколько секунд до истечения обновлять (по умолчанию 300)
     DEV_TOKEN_KEY — в какие переменные .env писать токен, через запятую
       (по умолчанию VITE_API_KEY), например VITE_API_KEY,BUN_PUBLIC_API_KEY
+    DEV_TWO_FACTOR_ENDPOINT, DEV_TWO_FACTOR_CODE — если заданы обе, запрос
+      уходит на DEV_TWO_FACTOR_ENDPOINT?two_factor_code=<код> вместо DEV_ENDPOINT
 */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -105,10 +107,31 @@ const pickToken = (data) => {
   return typeof value === "string" ? value : "";
 };
 
-const main = async () => {
-  const { DEV_ENDPOINT, DEV_LOGIN, DEV_PASSWORD } = process.env;
+const getAuthUrl = () => {
+  const { DEV_ENDPOINT, DEV_TWO_FACTOR_ENDPOINT, DEV_TWO_FACTOR_CODE } =
+    process.env;
 
-  if (!DEV_ENDPOINT || !DEV_LOGIN || !DEV_PASSWORD) {
+  if (!DEV_TWO_FACTOR_ENDPOINT !== !DEV_TWO_FACTOR_CODE) {
+    fail("Задайте DEV_TWO_FACTOR_ENDPOINT и DEV_TWO_FACTOR_CODE вместе");
+  }
+
+  if (!DEV_TWO_FACTOR_ENDPOINT) return DEV_ENDPOINT;
+
+  let url;
+  try {
+    url = new URL(DEV_TWO_FACTOR_ENDPOINT);
+  } catch {
+    fail(`Некорректный DEV_TWO_FACTOR_ENDPOINT: ${DEV_TWO_FACTOR_ENDPOINT}`);
+  }
+  url.searchParams.set("two_factor_code", DEV_TWO_FACTOR_CODE);
+  return url.toString();
+};
+
+const main = async () => {
+  const { DEV_LOGIN, DEV_PASSWORD } = process.env;
+  const authUrl = getAuthUrl();
+
+  if (!authUrl || !DEV_LOGIN || !DEV_PASSWORD) {
     fail("Задайте DEV_ENDPOINT, DEV_LOGIN и DEV_PASSWORD в .env");
   }
 
@@ -121,13 +144,13 @@ const main = async () => {
 
   let response;
   try {
-    response = await fetch(DEV_ENDPOINT, {
+    response = await fetch(authUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ login: DEV_LOGIN, password: DEV_PASSWORD }),
     });
   } catch (error) {
-    fail(`Не удалось подключиться к ${DEV_ENDPOINT}: ${error.message}`);
+    fail(`Не удалось подключиться к ${authUrl}: ${error.message}`);
   }
 
   if (!response.ok) {
